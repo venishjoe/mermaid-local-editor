@@ -3,7 +3,7 @@
 A lightweight, high-performance, client-side editor for building and exporting Mermaid.js diagrams. Built using Monaco Editor for code input, Tailwind CSS for styling, and native browser APIs for high-resolution rendering and asset exporting.
 
 ## 🚀 Live Demo
-👉 **[Launch Live Application](ADD_YOUR_GITHUB_PAGES_LINK_HERE)**
+👉 **[Launch Live Application](https://mermaid.venishjoe.net/)**
 
 ---
 
