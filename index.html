@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local Mermaid Editor & Export</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; }
+        .monaco-editor { padding-top: 8px; }
+        /* Custom scrollbar for preview */
+        .preview-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+        .preview-scroll::-webkit-scrollbar-track { background: transparent; }
+        .preview-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .dark .preview-scroll::-webkit-scrollbar-thumb { background: #475569; }
+
+        /* Zoom & Pan Canvas Container Constrains */
+        #previewCanvas {
+            cursor: grab;
+        }
+        #previewCanvas:active {
+            cursor: grabbing;
+        }
+        #mermaidOutput {
+            transform-origin: center center;
+            transition: transform 0.1s ease-out;
+            will-change: transform;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100 h-screen flex flex-col antialiased transition-colors duration-200">
+
+    <header class="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 h-14 flex items-center justify-between px-6 z-10 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="bg-indigo-600 text-white p-1.5 rounded-lg">
+                <i data-lucide="diagram-7" class="w-5 h-5"></i>
+            </div>
+            <h1 class="text-lg font-bold text-slate-800 dark:text-slate-200 tracking-tight">Mermaid Local Editor</h1>
+        </div>
+        
+        <div class="flex items-center space-x-4">
+            <button id="btnToggleTheme" class="p-2 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition" title="Toggle App Light/Dark Mode">
+                <i data-lucide="sun" class="w-4 h-4 dark:hidden"></i>
+                <i data-lucide="moon" class="w-4 h-4 hidden dark:block"></i>
+            </button>
+
+            <div class="flex items-center space-x-2">
+                <i data-lucide="palette" class="w-4 h-4 text-slate-500"></i>
+                <select id="themeSelect" class="bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md px-2 py-1 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="default">Default</option>
+                    <option value="forest">Forest</option>
+                    <option value="dark">Dark</option>
+                    <option value="neutral">Neutral</option>
+                    <option value="base">Base</option>
+                </select>
+            </div>
+
+            <div class="h-4 w-px bg-slate-200 dark:bg-slate-700"></div>
+
+            <div class="flex items-center space-x-2">
+                <button id="btnCopySvg" class="flex items-center space-x-1.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 px-3 py-1.5 rounded-md text-sm font-medium transition">
+                    <i data-lucide="copy" class="w-4 h-4"></i>
+                    <span>Copy SVG</span>
+                </button>
+                <button id="btnDownloadSvg" class="flex items-center space-x-1.5 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-400 px-3 py-1.5 rounded-md text-sm font-medium transition">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    <span>SVG</span>
+                </button>
+                <button id="btnDownloadPng" class="flex items-center space-x-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-md text-sm font-medium transition shadow-sm">
+                    <i data-lucide="image" class="w-4 h-4"></i>
+                    <span>PNG</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 flex overflow-hidden">
+        <section class="w-1/2 h-full flex flex-col border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+            <div class="bg-slate-50 dark:bg-slate-800/50 px-4 py-2 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wider flex items-center justify-between">
+                <span>CODE EDITOR</span>
+                <span id="editorStatus" class="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                    <i data-lucide="check-circle" class="w-3 h-3"></i> Syncing
+                </span>
+            </div>
+            <div id="editorContainer" class="flex-1 w-full"></div>
+        </section>
+
+        <section class="w-1/2 h-full flex flex-col bg-slate-50 dark:bg-slate-950 relative">
+            <div class="bg-slate-50 dark:bg-slate-800/50 px-4 py-2 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wider flex items-center justify-between z-10">
+                <span>PREVIEW</span>
+                <div id="errorBadge" class="hidden bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 px-2 py-0.5 rounded text-[11px] font-medium flex items-center gap-1 animate-pulse">
+                    <i data-lucide="alert-circle" class="w-3 h-3"></i> Syntax Error
+                </div>
+            </div>
+
+            <div class="absolute bottom-6 right-6 flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg px-2 py-1.5 space-x-1 z-20">
+                <button id="btnZoomOut" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 transition" title="Zoom Out">
+                    <i data-lucide="zoom-out" class="w-4 h-4"></i>
+                </button>
+                <button id="btnZoomReset" class="px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-bold rounded text-slate-600 dark:text-slate-300 transition" title="Reset View">
+                    100%
+                </button>
+                <button id="btnZoomIn" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 transition" title="Zoom In">
+                    <i data-lucide="zoom-in" class="w-4 h-4"></i>
+                </button>
+                <div class="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
+                <span class="text-[10px] text-slate-400 uppercase select-none px-1">Drag to Pan</span>
+            </div>
+
+            <div class="flex-1 overflow-hidden p-8 flex items-center justify-center preview-scroll relative" id="previewCanvas">
+                <div id="mermaidOutput" class="w-full h-full flex items-center justify-center"></div>
+            </div>
+        </section>
+    </main>
+
+    <div id="errorConsole" class="hidden bg-rose-900 text-rose-100 p-4 font-mono text-xs border-t border-rose-900 shrink-0 max-h-40 overflow-y-auto">
+        <div class="font-bold mb-1 flex items-center gap-1.5 text-rose-300">
+            <i data-lucide="terminal" class="w-4 h-4"></i> Error Log:
+        </div>
+        <pre id="errorMessage" class="whitespace-pre-wrap"></pre>
+    </div>
+
+    <script>var require = { paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } };</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.nls.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.js"></script>
+    
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // Default Template Diagram
+        const defaultCode = `graph TD
+			A[Start Project] --> B[Is it Local?]
+			B -- Yes --> C[Run local server]
+			B -- No --> D[Deploy to Cloud]
+			C --> E[Edit code in Monaco]
+			E --> F[Watch instant Preview]
+			F --> G[Export to SVG/PNG]
+			D --> G
+    
+			style A fill:#e0e7ff,stroke:#4f46e5,stroke-width:2px
+			style G fill:#dcfce7,stroke:#16a34a,stroke-width:2px`;
+
+        let editor;
+        let renderTimeout;
+        const outputDiv = document.getElementById('mermaidOutput');
+        const previewCanvas = document.getElementById('previewCanvas');
+        const errorConsole = document.getElementById('errorConsole');
+        const errorMessage = document.getElementById('errorMessage');
+        const errorBadge = document.getElementById('errorBadge');
+        const editorStatus = document.getElementById('editorStatus');
+        const themeSelect = document.getElementById('themeSelect');
+        const btnToggleTheme = document.getElementById('btnToggleTheme');
+        const htmlNode = document.documentElement;
+
+        // --- Viewport Interactive State Controllers (Pan & Zoom engine) ---
+        let currentScale = 1.0;
+        let panX = 0;
+        let panY = 0;
+        let isDragging = false;
+        let startX, startY;
+
+        function updateCanvasTransform() {
+            outputDiv.style.transform = `translate(${panX}px, ${panY}px) scale(${currentScale})`;
+            document.getElementById('btnZoomReset').textContent = `${Math.round(currentScale * 100)}%`;
+        }
+
+        previewCanvas.addEventListener('mousedown', (e) => {
+            if (e.target === previewCanvas || outputDiv.contains(e.target)) {
+                isDragging = true;
+                startX = e.clientX - panX;
+                startY = e.clientY - panY;
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            panX = e.clientX - startX;
+            panY = e.clientY - startY;
+            updateCanvasTransform();
+        });
+
+        window.addEventListener('mouseup', () => isDragging = false);
+
+        previewCanvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomSpeed = 0.05;
+            if (e.deltaY < 0) {
+                currentScale = Math.min(currentScale + zoomSpeed, 4.0);
+            } else {
+                currentScale = Math.max(currentScale - zoomSpeed, 0.15);
+            }
+            updateCanvasTransform();
+        }, { passive: false });
+
+        document.getElementById('btnZoomIn').addEventListener('click', () => {
+            currentScale = Math.min(currentScale + 0.15, 4.0);
+            updateCanvasTransform();
+        });
+        document.getElementById('btnZoomOut').addEventListener('click', () => {
+            currentScale = Math.max(currentScale - 0.15, 0.15);
+            updateCanvasTransform();
+        });
+        document.getElementById('btnZoomReset').addEventListener('click', () => {
+            currentScale = 1.0;
+            panX = 0;
+            panY = 0;
+            updateCanvasTransform();
+        });
+
+        // --- Global Skin Toggle Framework ---
+        btnToggleTheme.addEventListener('click', () => {
+            if (htmlNode.classList.contains('dark')) {
+                htmlNode.classList.remove('dark');
+                monaco.editor.setTheme('vs-light');
+                themeSelect.value = 'default';
+            } else {
+                htmlNode.classList.add('dark');
+                monaco.editor.setTheme('vs-dark');
+                themeSelect.value = 'dark';
+            }
+            renderDiagram();
+        });
+
+        // Initialize Mermaid config
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: 'default',
+            securityLevel: 'strict',
+            fontFamily: 'ui-sans-serif, system-ui, sans-serif'
+        });
+
+        // Initialize Monaco Code Editor
+        editor = monaco.editor.create(document.getElementById('editorContainer'), {
+            value: defaultCode,
+            language: 'markdown', 
+            theme: 'vs-light',
+            automaticLayout: true,
+            fontSize: 14,
+            minimap: { enabled: false },
+            lineNumbers: 'on',
+            roundedSelection: true,
+            scrollBeyondLastLine: false,
+            cursorBlinking: 'smooth',
+            padding: { top: 10 }
+        });
+
+        // Live Re-rendering with Debounce to prevent performance stutter
+        editor.onDidChangeModelContent(() => {
+            setSyncingStatus(true);
+            clearTimeout(renderTimeout);
+            renderTimeout = setTimeout(renderDiagram, 350); 
+        });
+
+        // Theme Change Handler
+        themeSelect.addEventListener('change', () => {
+            renderDiagram();
+        });
+
+        // Toggle UI Error Display States
+        function setSyncingStatus(isSyncing) {
+            if (isSyncing) {
+                editorStatus.innerHTML = `<i data-lucide="refresh-cw" class="w-3 h-3 animate-spin"></i> Processing`;
+                editorStatus.className = "text-amber-600 flex items-center gap-1";
+            } else {
+                editorStatus.innerHTML = `<i data-lucide="check-circle" class="w-3 h-3"></i> Syncing`;
+                editorStatus.className = "text-emerald-600 dark:text-emerald-400 flex items-center gap-1";
+            }
+            lucide.createIcons();
+        }
+
+        // Core Render Function
+        async function renderDiagram() {
+            const code = editor.getValue();
+            const currentTheme = themeSelect.value;
+            
+            // Clean dynamic ID for compilation isolation
+            const uniqueId = 'mermaid-render-' + Math.floor(Math.random() * 10000);
+
+            try {
+                // Re-initialize mermaid instance configurations with active theme
+                mermaid.initialize({
+                    startOnLoad: false,
+                    theme: currentTheme,
+                    securityLevel: 'loose'
+                });
+
+                // Pre-validate diagram using parse
+                await mermaid.parse(code);
+
+                // If valid, clear logs
+                errorConsole.classList.add('hidden');
+                errorBadge.classList.add('hidden');
+
+                // Render out diagram
+                const { svg } = await mermaid.render(uniqueId, code);
+                outputDiv.innerHTML = svg;
+                
+                // Adjust generated SVG to scale intelligently in preview window
+                const svgElement = outputDiv.querySelector('svg');
+                if (svgElement) {
+                    svgElement.style.maxWidth = '100%';
+                    svgElement.style.height = 'auto';
+                    svgElement.style.maxHeight = '80vh';
+                }
+
+            } catch (err) {
+                // Surface syntax error natively without crashing execution context
+                errorConsole.classList.remove('hidden');
+                errorBadge.classList.remove('hidden');
+                errorMessage.textContent = err.message || err;
+                console.error("Mermaid Parse Exception Raised: ", err);
+            } finally {
+                setSyncingStatus(false);
+            }
+        }
+
+        // ================= EXPORT CONTROLLERS =================
+
+        // Helper function to extract working native SVG source string
+        function getSvgString() {
+            const svgEl = outputDiv.querySelector('svg');
+            if (!svgEl) {
+                alert("No rendered diagram available to export.");
+                return null;
+            }
+            
+            // Deep clone to isolate transformations safely
+            const clone = svgEl.cloneNode(true);
+            clone.removeAttribute('style'); 
+            
+            const serializer = new XMLSerializer();
+            return serializer.serializeToString(clone);
+        }
+
+        // Copy Raw SVG to Clipboard
+        document.getElementById('btnCopySvg').addEventListener('click', async () => {
+            const svgString = getSvgString();
+            if (!svgString) return;
+
+            try {
+                await navigator.clipboard.writeText(svgString);
+                alert("SVG markup successfully copied to clipboard!");
+            } catch (err) {
+                alert("Failed to copy clipboard items automatically.");
+            }
+        });
+
+        // Trigger Vector SVG File Download
+        document.getElementById('btnDownloadSvg').addEventListener('click', () => {
+            const svgString = getSvgString();
+            if (!svgString) return;
+
+            const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+            const blobUrl = URL.createObjectURL(blob);
+            
+            const downloadLink = document.createElement('a');
+            downloadLink.href = blobUrl;
+            downloadLink.download = `mermaid-diagram-${Date.now()}.svg`;
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+            URL.revokeObjectURL(blobUrl);
+        });
+
+        // Rasterize and Trigger High-Res PNG File Download
+        document.getElementById('btnDownloadPng').addEventListener('click', () => {
+            const svgEl = outputDiv.querySelector('svg');
+            if (!svgEl) return alert("No rendered diagram available to export.");
+
+            const svgString = getSvgString();
+            
+            // Read active SVG dimensions
+            const bbox = svgEl.getBoundingClientRect();
+            // Scale up resolution dynamic multiplier for crystal-clear image exports
+            const scaleFactor = 2; 
+            const width = (svgEl.viewBox.baseVal.width || bbox.width || 800) * scaleFactor;
+            const height = (svgEl.viewBox.baseVal.height || bbox.height || 600) * scaleFactor;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+
+            // Set up clean background layer if dark theme active
+            if (htmlNode.classList.contains('dark') || themeSelect.value === 'dark') {
+                ctx.fillStyle = '#0f172a'; 
+                ctx.fillRect(0, 0, width, height);
+            } else {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, width, height);
+            }
+
+            const img = new Image();
+            // Encode target object binary structures to safety string maps
+            const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+
+            img.onload = function() {
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                canvas.toBlob((pngBlob) => {
+                    const pngUrl = URL.createObjectURL(pngBlob);
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = pngUrl;
+                    downloadLink.download = `mermaid-diagram-${Date.now()}.png`;
+                    document.body.appendChild(downloadLink);
+                    downloadLink.click();
+                    document.body.removeChild(downloadLink);
+                    URL.revokeObjectURL(pngUrl);
+                }, 'image/png');
+                
+                URL.revokeObjectURL(url);
+            };
+
+            img.src = url;
+        });
+
+        // Trigger initial render run loop
+        renderDiagram();
+    </script>
+</body>
+</html>
