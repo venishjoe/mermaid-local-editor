@@ -47,14 +47,39 @@
             </button>
 
             <div class="flex items-center space-x-2">
-                <i data-lucide="palette" class="w-4 h-4 text-slate-500"></i>
+                <i data-lucide="palette" class="w-4 h-4 text-slate-500" title="Theme"></i>
                 <select id="themeSelect" class="bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md px-2 py-1 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <option value="default">Default</option>
+                    <option value="default">Default Theme</option>
                     <option value="forest">Forest</option>
                     <option value="dark">Dark</option>
                     <option value="neutral">Neutral</option>
-                    <option value="base">Base</option>
+                    <option value="base">Base (Customizable)</option>
                 </select>
+            </div>
+
+            <div class="flex items-center space-x-2">
+                <i data-lucide="sparkles" class="w-4 h-4 text-slate-500" title="Look Style"></i>
+                <select id="lookSelect" class="bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md px-2 py-1 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="classic">Classic Look</option>
+                    <option value="handwritten" selected>Handwritten</option>
+                </select>
+            </div>
+
+            <div class="flex items-center space-x-2">
+                <i data-lucide="git-commit" class="w-4 h-4 text-slate-500" title="Line Curves"></i>
+                <select id="curveSelect" class="bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md px-2 py-1 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="basis">Basis Curve</option>
+                    <option value="linear">Linear</option>
+                    <option value="cardinal">Cardinal</option>
+                </select>
+            </div>
+
+            <div class="flex items-center space-x-2 pl-1">
+                <label class="inline-flex items-center cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-200" title="Export with completely transparent background canvas styles">
+                    <input type="checkbox" id="transparentExport" class="sr-only peer">
+                    <div class="relative w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-indigo-600"></div>
+                    <span class="ms-2 text-xs">Transparent</span>
+                </label>
             </div>
 
             <div class="h-4 w-px bg-slate-200 dark:bg-slate-700"></div>
@@ -133,18 +158,18 @@
         // Initialize Lucide Icons
         lucide.createIcons();
 
-        // Default Template Diagram
-        const defaultCode = `graph TD
-			A[Start Project] --> B[Is it Local?]
-			B -- Yes --> C[Run local server]
-			B -- No --> D[Deploy to Cloud]
-			C --> E[Edit code in Monaco]
-			E --> F[Watch instant Preview]
-			F --> G[Export to SVG/PNG]
-			D --> G
-    
-			style A fill:#e0e7ff,stroke:#4f46e5,stroke-width:2px
-			style G fill:#dcfce7,stroke:#16a34a,stroke-width:2px`;
+        // Standardized template syntax (Uses flowchart to map completely with layout looks)
+        const defaultCode = `flowchart TD
+A[Start Project] --> B[Is it Local?]
+B -- Yes --> C[Run local server]
+B -- No --> D[Deploy to Cloud]
+C --> E[Edit code in Monaco]
+E --> F[Watch instant Preview]
+F --> G[Export to SVG/PNG]
+D --> G
+
+style A fill:#e0e7ff,stroke:#4f46e5,stroke-width:2px
+style G fill:#dcfce7,stroke:#16a34a,stroke-width:2px`;
 
         let editor;
         let renderTimeout;
@@ -155,6 +180,9 @@
         const errorBadge = document.getElementById('errorBadge');
         const editorStatus = document.getElementById('editorStatus');
         const themeSelect = document.getElementById('themeSelect');
+        const lookSelect = document.getElementById('lookSelect');
+        const curveSelect = document.getElementById('curveSelect');
+        const transparentExport = document.getElementById('transparentExport');
         const btnToggleTheme = document.getElementById('btnToggleTheme');
         const htmlNode = document.documentElement;
 
@@ -227,14 +255,6 @@
             renderDiagram();
         });
 
-        // Initialize Mermaid config
-        mermaid.initialize({
-            startOnLoad: false,
-            theme: 'default',
-            securityLevel: 'strict',
-            fontFamily: 'ui-sans-serif, system-ui, sans-serif'
-        });
-
         // Initialize Monaco Code Editor
         editor = monaco.editor.create(document.getElementById('editorContainer'), {
             value: defaultCode,
@@ -257,12 +277,11 @@
             renderTimeout = setTimeout(renderDiagram, 350); 
         });
 
-        // Theme Change Handler
-        themeSelect.addEventListener('change', () => {
-            renderDiagram();
-        });
+        // Dropdowns Change Handlers
+        themeSelect.addEventListener('change', renderDiagram);
+        lookSelect.addEventListener('change', renderDiagram);
+        curveSelect.addEventListener('change', renderDiagram);
 
-        // Toggle UI Error Display States
         function setSyncingStatus(isSyncing) {
             if (isSyncing) {
                 editorStatus.innerHTML = `<i data-lucide="refresh-cw" class="w-3 h-3 animate-spin"></i> Processing`;
@@ -276,32 +295,39 @@
 
         // Core Render Function
         async function renderDiagram() {
-            const code = editor.getValue();
+            const rawCode = editor.getValue().trim();
             const currentTheme = themeSelect.value;
+            const currentLook = lookSelect.value;
+            const currentCurve = curveSelect.value;
             
-            // Clean dynamic ID for compilation isolation
             const uniqueId = 'mermaid-render-' + Math.floor(Math.random() * 10000);
 
+            // Clean fonts to optimize alignment properties with hand drawn constraints
+            const selectedFont = currentLook === 'handwritten' 
+                ? '"Comic Neue", "Chalkboard SE", "Comic Sans MS", cursive' 
+                : 'ui-sans-serif, system-ui, sans-serif';
+
             try {
-                // Re-initialize mermaid instance configurations with active theme
+                // Initialize clean instance configuration properties directly via code structure properties
                 mermaid.initialize({
                     startOnLoad: false,
                     theme: currentTheme,
+                    look: currentLook,
+                    fontFamily: selectedFont,
+                    flowchart: { curve: currentCurve },
                     securityLevel: 'loose'
                 });
 
-                // Pre-validate diagram using parse
-                await mermaid.parse(code);
+                // Clear down validation layers
+                await mermaid.parse(rawCode);
 
-                // If valid, clear logs
                 errorConsole.classList.add('hidden');
                 errorBadge.classList.add('hidden');
 
-                // Render out diagram
-                const { svg } = await mermaid.render(uniqueId, code);
+                // Generate element markup cleanly
+                const { svg } = await mermaid.render(uniqueId, rawCode);
                 outputDiv.innerHTML = svg;
                 
-                // Adjust generated SVG to scale intelligently in preview window
                 const svgElement = outputDiv.querySelector('svg');
                 if (svgElement) {
                     svgElement.style.maxWidth = '100%';
@@ -310,7 +336,6 @@
                 }
 
             } catch (err) {
-                // Surface syntax error natively without crashing execution context
                 errorConsole.classList.remove('hidden');
                 errorBadge.classList.remove('hidden');
                 errorMessage.textContent = err.message || err;
@@ -322,7 +347,6 @@
 
         // ================= EXPORT CONTROLLERS =================
 
-        // Helper function to extract working native SVG source string
         function getSvgString() {
             const svgEl = outputDiv.querySelector('svg');
             if (!svgEl) {
@@ -330,7 +354,6 @@
                 return null;
             }
             
-            // Deep clone to isolate transformations safely
             const clone = svgEl.cloneNode(true);
             clone.removeAttribute('style'); 
             
@@ -338,7 +361,6 @@
             return serializer.serializeToString(clone);
         }
 
-        // Copy Raw SVG to Clipboard
         document.getElementById('btnCopySvg').addEventListener('click', async () => {
             const svgString = getSvgString();
             if (!svgString) return;
@@ -351,7 +373,6 @@
             }
         });
 
-        // Trigger Vector SVG File Download
         document.getElementById('btnDownloadSvg').addEventListener('click', () => {
             const svgString = getSvgString();
             if (!svgString) return;
@@ -368,16 +389,12 @@
             URL.revokeObjectURL(blobUrl);
         });
 
-        // Rasterize and Trigger High-Res PNG File Download
         document.getElementById('btnDownloadPng').addEventListener('click', () => {
             const svgEl = outputDiv.querySelector('svg');
             if (!svgEl) return alert("No rendered diagram available to export.");
 
             const svgString = getSvgString();
-            
-            // Read active SVG dimensions
             const bbox = svgEl.getBoundingClientRect();
-            // Scale up resolution dynamic multiplier for crystal-clear image exports
             const scaleFactor = 2; 
             const width = (svgEl.viewBox.baseVal.width || bbox.width || 800) * scaleFactor;
             const height = (svgEl.viewBox.baseVal.height || bbox.height || 600) * scaleFactor;
@@ -387,8 +404,9 @@
             canvas.height = height;
             const ctx = canvas.getContext('2d');
 
-            // Set up clean background layer if dark theme active
-            if (htmlNode.classList.contains('dark') || themeSelect.value === 'dark') {
+            if (transparentExport.checked) {
+                ctx.clearRect(0, 0, width, height);
+            } else if (htmlNode.classList.contains('dark') || themeSelect.value === 'dark') {
                 ctx.fillStyle = '#0f172a'; 
                 ctx.fillRect(0, 0, width, height);
             } else {
@@ -397,7 +415,6 @@
             }
 
             const img = new Image();
-            // Encode target object binary structures to safety string maps
             const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
             const url = URL.createObjectURL(blob);
 
@@ -421,7 +438,7 @@
             img.src = url;
         });
 
-        // Trigger initial render run loop
+        // Initialize execution setup loops
         renderDiagram();
     </script>
 </body>
